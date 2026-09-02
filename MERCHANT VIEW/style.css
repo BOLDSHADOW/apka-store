@@ -1,0 +1,18 @@
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #f3f6fb; color: #202331; font-family: Arial, Helvetica, sans-serif; }
+button { font: inherit; cursor: pointer; }
+.merchant-app { width: min(100%, 1100px); min-height: 100dvh; margin: 0 auto; padding: 32px 5%; }
+.merchant-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 28px; }
+.eyebrow { margin: 0 0 5px; color: #1651a3; font-size: 12px; font-weight: 800; letter-spacing: 2px; }
+h1 { margin: 0; font-size: clamp(26px, 4vw, 38px); }
+.merchant-name { margin: 7px 0 0; color: #667085; font-size: 15px; }
+.sign-out-button { border: 1px solid #cdd6e3; border-radius: 10px; padding: 10px 14px; background: #fff; color: #1651a3; font-weight: 700; }
+.merchant-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.merchant-action { min-height: 150px; border: 0; border-radius: 20px; background: #fff; color: #202331; box-shadow: 0 8px 25px rgba(20, 55, 100, .1); display: grid; place-items: center; align-content: center; gap: 12px; font-weight: 800; transition: transform .2s ease, background .2s ease; }
+.merchant-action:hover, .merchant-action:focus-visible { background: #eaf2ff; transform: translateY(-3px); outline: none; }
+.action-icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 16px; background: #1651a3; color: #fff; }
+.action-icon svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dashboard-card { margin-top: 28px; padding: 25px; border-radius: 20px; background: #fff; box-shadow: 0 8px 25px rgba(20, 55, 100, .08); }
+.dashboard-card h2 { margin: 0 0 8px; font-size: 22px; }.dashboard-card p { margin: 0; color: #667085; line-height: 1.5; }
+@media (max-width: 600px) { .merchant-app { padding: 22px 16px; }.merchant-header { align-items: flex-start; gap: 12px; margin-bottom: 22px; }.sign-out-button { padding: 9px 11px; font-size: 13px; }.merchant-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }.merchant-action { min-height: 128px; border-radius: 16px; }.action-icon { width: 46px; height: 46px; }.dashboard-card { margin-top: 20px; padding: 20px; } }
