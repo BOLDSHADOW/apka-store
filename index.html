@@ -2097,8 +2097,8 @@ featuredCards.forEach(function(card) {
 
         try {
             await signInWithPopup(auth, provider);
-            merchantLoginStatus.textContent = "Login successful. Opening merchant dashboard...";
-            window.location.href = "./merchant demo/index.html";
+            merchantLoginStatus.textContent = "Login successful. Opening merchant registration...";
+            window.location.href = "./merchant demo/index.html?flow=register";
         } catch (error) {
             console.error("Merchant Google login failed:", error);
             merchantLoginStatus.textContent = getLoginErrorMessage(error);
