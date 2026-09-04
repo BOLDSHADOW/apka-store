@@ -1,16 +1,119 @@
-﻿const $ = (selector) => document.querySelector(selector);
+﻿(async () => {
+const {
+  initializeApp,
+} = await import('https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js');
+const {
+  GoogleAuthProvider,
+  browserLocalPersistence,
+  getAuth,
+  onAuthStateChanged,
+  setPersistence,
+  signInWithPopup,
+  signOut,
+} = await import('https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js');
+const {
+  getDownloadURL,
+  getStorage,
+  ref,
+  uploadString,
+} = await import('https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js');
+const {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  getFirestore,
+  limit,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+  deleteDoc,
+} = await import('https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js');
+
+const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const KEY = 'apkaMerchantStoreV1';
+const firebaseConfig = {
+  apiKey: 'AIzaSyAnKvRsz1_bsttCZUzDxROvFFakechrGug',
+  authDomain: 'apka-store-1f1df.firebaseapp.com',
+  projectId: 'apka-store-1f1df',
+  storageBucket: 'apka-store-1f1df.firebasestorage.app',
+  messagingSenderId: '631626163938',
+  appId: '1:631626163938:web:e9ee057f3335163381a0bb',
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const storage = getStorage(firebaseApp);
+const provider = new GoogleAuthProvider();
+const hostname = window.location.hostname.toLowerCase();
+const hostSlug = hostname.endsWith('.apka.store') ? hostname.slice(0, -'.apka.store'.length) : '';
+const isCustomStoreHost = hostSlug && hostSlug !== 'list' && hostSlug !== 'www';
 
-let s = JSON.parse(localStorage.getItem(KEY) || '{"categories":[],"products":[]}');
+let currentUser = null;
+let storeSlug = isCustomStoreHost ? hostSlug : '';
+let storeRef = null;
+let s = { categories: [], products: [] };
 let imgs = [];
-
-const save = () => localStorage.setItem(KEY, JSON.stringify(s));
 const esc = (value) => {
   const div = document.createElement('div');
   div.textContent = value;
   return div.innerHTML;
 };
+
+function setAuthStatus(message) {
+  const status = $('#authStatus');
+  if (status) status.textContent = message;
+}
+
+function showAuthError(error) {
+  const messages = {
+    'auth/unauthorized-domain': 'Add this website in Firebase Authentication > Settings > Authorized domains.',
+    'auth/popup-blocked': 'Allow popups for this website and try again.',
+    'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
+  };
+  setAuthStatus(messages[error.code] || `Sign-in failed (${error.code || 'unknown error'}).`);
+}
+
+function getBusinessForm() {
+  const business = {};
+  ['domain', 'name', 'phone', 'street', 'city', 'state', 'pin', 'map', 'type'].forEach((key) => {
+    business[key] = $('#' + key).value.trim();
+  });
+  return business;
+}
+
+async function loadStore(slug) {
+  storeRef = doc(db, 'stores', slug);
+  const storeSnapshot = await getDoc(storeRef);
+  if (!storeSnapshot.exists()) return false;
+
+  const data = storeSnapshot.data();
+  if (data.ownerUid !== currentUser.uid) {
+    setAuthStatus('This store belongs to another merchant account.');
+    return false;
+  }
+
+  const productsSnapshot = await getDocs(query(collection(storeRef, 'products'), orderBy('createdAt', 'asc')));
+  s = {
+    business: data.business || {},
+    categories: data.categories || [],
+    products: productsSnapshot.docs.map((product) => ({ id: product.id, ...product.data() })),
+  };
+  return true;
+}
+
+async function loadOwnedStore() {
+  const stores = await getDocs(query(collection(db, 'stores'), where('ownerUid', '==', currentUser.uid), limit(1)));
+  if (!stores.empty) {
+    storeSlug = stores.docs[0].id;
+    return loadStore(storeSlug);
+  }
+  return false;
+}
 
 function show(id) {
   $$('.page').forEach((page) => page.classList.add('hide'));
@@ -77,23 +180,51 @@ function check() {
 
 $('#domain').oninput = check;
 
-$('#businessForm').onsubmit = (event) => {
+$('#businessForm').onsubmit = async (event) => {
   event.preventDefault();
 
-  if (!check() || !$('#name').value.trim() || !/^[6-9]\d{9}$/.test($('#phone').value) || !$('#city').value.trim() || !$('#state').value.trim() || !/^\d{6}$/.test($('#pin').value)) {
+  if (!currentUser) {
+    setAuthStatus('Sign in with Google before creating your store.');
+    return;
+  }
+
+  if (isCustomStoreHost || !check() || !$('#name').value.trim() || !/^[6-9]\d{9}$/.test($('#phone').value) || !$('#city').value.trim() || !$('#state').value.trim() || !/^\d{6}$/.test($('#pin').value)) {
     alert('Please fill all required fields with a valid mobile number and pincode.');
     return;
   }
 
-  s.business = {};
-  ['domain', 'name', 'phone', 'street', 'city', 'state', 'pin', 'map', 'type'].forEach((key) => {
-    s.business[key] = $('#' + key).value.trim();
-  });
+  const business = getBusinessForm();
+  const requestedSlug = business.domain;
+  const requestedRef = doc(db, 'stores', requestedSlug);
 
-  save();
-  $('#successUrl').textContent = s.business.domain + '.apka.store';
-  $('#successUrlShort').textContent = s.business.domain + '.apka.store';
-  $('#success').classList.remove('hide');
+  try {
+    await runTransaction(db, async (transaction) => {
+      const existing = await transaction.get(requestedRef);
+      if (existing.exists() && existing.data().ownerUid !== currentUser.uid) {
+        throw new Error('STORE_SLUG_TAKEN');
+      }
+      transaction.set(requestedRef, {
+        ownerUid: currentUser.uid,
+        business,
+        categories: s.categories,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    });
+    storeSlug = requestedSlug;
+    storeRef = requestedRef;
+    s.business = business;
+    $('#successUrl').textContent = requestedSlug + '.apka.store';
+    $('#successUrlShort').textContent = requestedSlug + '.apka.store';
+    $('#success').classList.remove('hide');
+  } catch (error) {
+    if (error.message === 'STORE_SLUG_TAKEN') {
+      $('#domainNote').textContent = 'This store link is already occupied.';
+      $('#domainNote').className = 'bad';
+    } else {
+      console.error('Could not create store:', error);
+      setAuthStatus('Could not save your store. Check Firebase Firestore and try again.');
+    }
+  }
 };
 
 $('#goInventory').onclick = () => {
@@ -119,22 +250,22 @@ function renderCats() {
   $('#category').innerHTML = '<option value="">Choose a category</option>' + s.categories.map((category) => `<option>${esc(category)}</option>`).join('');
 
   $$('[data-x]').forEach((button) => {
-    button.onclick = () => {
+    button.onclick = async () => {
       s.categories.splice(Number(button.dataset.x), 1);
-      save();
+      if (storeRef) await updateDoc(storeRef, { categories: s.categories, updatedAt: serverTimestamp() });
       renderCats();
     };
   });
 }
 
-$('#addCat').onclick = (event) => {
+$('#addCat').onclick = async (event) => {
   event.preventDefault();
   const categoryName = $('#catName').value.trim();
 
   if (categoryName && !s.categories.some((category) => category.toLowerCase() === categoryName.toLowerCase())) {
     s.categories.push(categoryName);
     $('#catName').value = '';
-    save();
+    if (storeRef) await updateDoc(storeRef, { categories: s.categories, updatedAt: serverTimestamp() });
     renderCats();
   }
 };
@@ -213,7 +344,7 @@ $('#video').onchange = (event) => {
   };
 };
 
-$('#productForm').onsubmit = (event) => {
+$('#productForm').onsubmit = async (event) => {
   event.preventDefault();
 
   if (!s.categories.length) {
@@ -223,18 +354,31 @@ $('#productForm').onsubmit = (event) => {
 
   if (!event.target.reportValidity()) return;
 
-  s.products.push({
-    id: Date.now(),
+  if (!storeRef) {
+    alert('Create your store before adding products.');
+    return;
+  }
+
+  const productId = doc(collection(storeRef, 'products')).id;
+  const photoUrls = await Promise.all(imgs.map(async (image, index) => {
+    const imageRef = ref(storage, `stores/${storeSlug}/products/${productId}/${index}.jpg`);
+    await uploadString(imageRef, image, 'data_url');
+    return getDownloadURL(imageRef);
+  }));
+  const product = {
     name: $('#productName').value.trim(),
     category: $('#category').value,
     price: $('#price').value,
     sizes: $('#sizes').value,
     description: $('#description').value.trim(),
-    photos: [...imgs],
+    photos: photoUrls,
     active: true,
-  });
+    createdAt: serverTimestamp(),
+  };
 
-  save();
+  const productRef = doc(storeRef, 'products', productId);
+  await setDoc(productRef, product);
+  s.products.push({ id: productRef.id, ...product, createdAt: new Date() });
   event.target.reset();
   imgs = [];
   drawImgs();
@@ -295,7 +439,7 @@ function renderDash() {
       const product = s.products.find((item) => item.id == button.dataset.t);
       if (product) {
         product.active = !product.active;
-        save();
+        if (storeRef) updateDoc(doc(storeRef, 'products', product.id), { active: product.active, updatedAt: serverTimestamp() });
         renderDash();
       }
     };
@@ -305,7 +449,7 @@ function renderDash() {
     button.onclick = () => {
       if (confirm('Delete this product?')) {
         s.products = s.products.filter((product) => product.id != button.dataset.d);
-        save();
+        if (storeRef) deleteDoc(doc(storeRef, 'products', button.dataset.d));
         renderDash();
       }
     };
@@ -325,17 +469,61 @@ $('#share').onclick = async () => {
 $('#shareSidebar').onclick = $('#share').onclick;
 
 const searchParams = new URLSearchParams(window.location.search);
-if (searchParams.get('flow') === 'register' && !s.business) {
-  show('business');
-} else if (s.business) {
-  ['domain', 'name', 'phone', 'street', 'city', 'state', 'pin', 'map', 'type'].forEach((key) => {
-    const element = $('#' + key);
-    if (element) {
-      element.value = s.business[key] || '';
+const authButton = $('#authButton');
+
+authButton.onclick = async () => {
+  authButton.disabled = true;
+  setAuthStatus('Signing in...');
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    console.error('Merchant Google login failed:', error);
+    showAuthError(error);
+    authButton.disabled = false;
+  }
+};
+
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  console.warn('Could not set Firebase auth persistence:', error);
+});
+
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+  if (!user) {
+    authButton.textContent = 'Sign in with Google';
+    show('business');
+    setAuthStatus('Sign in to manage your store.');
+    return;
+  }
+
+  authButton.textContent = 'Sign out';
+  authButton.disabled = false;
+  authButton.onclick = () => signOut(auth);
+  setAuthStatus(`Signed in as ${user.email || user.displayName || 'merchant'}.`);
+
+  try {
+    const loaded = isCustomStoreHost
+      ? await loadStore(storeSlug)
+      : await loadOwnedStore();
+
+    if (loaded) {
+      ['domain', 'name', 'phone', 'street', 'city', 'state', 'pin', 'map', 'type'].forEach((key) => {
+        const element = $('#' + key);
+        if (element) element.value = s.business[key] || '';
+      });
+      check();
+      dash();
+      setAuthStatus(`Signed in as ${user.email || user.displayName || 'merchant'}.`);
+    } else if (isCustomStoreHost) {
+      show('business');
+      setAuthStatus('This store does not exist or is not owned by this account.');
+    } else {
+      show('business');
     }
-  });
-  check();
-  dash();
-} else {
-  show('business');
-}
+  } catch (error) {
+    console.error('Could not load merchant store:', error);
+    show('business');
+    setAuthStatus('Could not load your store. Check Firebase Firestore and try again.');
+  }
+});
+})();

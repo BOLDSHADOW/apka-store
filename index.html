@@ -2032,79 +2032,17 @@ featuredCards.forEach(function(card) {
 </script>
 
 <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-    import { getAnalytics, isSupported } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-analytics.js";
-    import {
-        GoogleAuthProvider,
-        browserLocalPersistence,
-        getAuth,
-        setPersistence,
-        signInWithPopup
-    } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
-
-    const firebaseConfig = {
-        apiKey: "AIzaSyAnKvRsz1_bsttCZUzDxROvFFakechrGug",
-        authDomain: "apka-store-1f1df.firebaseapp.com",
-        databaseURL: "https://apka-store-1f1df-default-rtdb.firebaseio.com",
-        projectId: "apka-store-1f1df",
-        storageBucket: "apka-store-1f1df.firebasestorage.app",
-        messagingSenderId: "631626163938",
-        appId: "1:631626163938:web:e9ee057f3335163381a0bb",
-        measurementId: "G-5YHEVYRHTF"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const provider = new GoogleAuthProvider();
-
-    // Set this before the user clicks Login. Waiting for it inside the click
-    // handler can make browsers treat the Google popup as an unwanted popup.
-    setPersistence(auth, browserLocalPersistence).catch((error) => {
-        console.warn("Could not set Firebase auth persistence:", error);
-    });
-
-    // Analytics is unavailable in some local/unsupported browser contexts, so
-    // authentication continues normally when it cannot be started.
-    isSupported().then((supported) => {
-        if (supported) getAnalytics(app);
-    });
-
-    const merchantLoginButton = document.getElementById("merchantLoginButton");
-    const merchantLoginText = document.getElementById("merchantLoginText");
-    const merchantLoginStatus = document.getElementById("merchantLoginStatus");
-
-    function getLoginErrorMessage(error) {
-        const messages = {
-            "auth/unauthorized-domain": "This website domain is not authorised in Firebase. Add it under Authentication → Settings → Authorized domains.",
-            "auth/operation-not-allowed": "Google sign-in is not enabled in Firebase Authentication.",
-            "auth/popup-blocked": "Your browser blocked the Google popup. Allow popups for this website and try again.",
-            "auth/popup-closed-by-user": "Google sign-in was cancelled.",
-            "auth/network-request-failed": "Network problem. Check your internet connection and try again."
-        };
-
-        return messages[error.code] || `Login failed (${error.code || "unknown error"}). Please try again.`;
+    const merchantHost = window.location.hostname.toLowerCase();
+    if (merchantHost === "list.apka.store" || (merchantHost.endsWith(".apka.store") && merchantHost !== "www.apka.store")) {
+        window.location.replace("/merchant%20demo/index.html" + window.location.search);
     }
 
+    const merchantLoginButton = document.getElementById("merchantLoginButton");
+    const merchantLoginStatus = document.getElementById("merchantLoginStatus");
+
     merchantLoginButton.addEventListener("click", async () => {
-        if (window.location.protocol === "file:") {
-            merchantLoginStatus.textContent = "Open this project using Live Server / localhost, not by double-clicking the HTML file.";
-            return;
-        }
-
-        merchantLoginButton.disabled = true;
-        merchantLoginText.textContent = "Signing in...";
-        merchantLoginStatus.textContent = "Choose your Google account to continue.";
-
-        try {
-            await signInWithPopup(auth, provider);
-            merchantLoginStatus.textContent = "Login successful. Opening merchant registration...";
-            window.location.href = "./merchant demo/index.html?flow=register";
-        } catch (error) {
-            console.error("Merchant Google login failed:", error);
-            merchantLoginStatus.textContent = getLoginErrorMessage(error);
-            merchantLoginText.textContent = "Login as Merchant";
-            merchantLoginButton.disabled = false;
-        }
+        merchantLoginStatus.textContent = "Opening merchant portal...";
+        window.location.href = "https://list.apka.store/?flow=register";
     });
 </script>
 
